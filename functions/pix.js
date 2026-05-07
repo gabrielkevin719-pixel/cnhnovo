@@ -1,5 +1,11 @@
-const TREXPAY_DEPOSIT_URL = "https://app.trexpayments.com.br/api/wallet/deposit/payment";
+const SYNCPAY_BASE_URL = "https://api.syncpayments.com.br";
+const SYNCPAY_CLIENT_ID = "192cea75-df6e-46df-8a2d-0f03751ce13c";
+const SYNCPAY_CLIENT_SECRET = "6c7f008b-bc68-45b6-b7ed-250f0955ed82";
+
 const { getSupabase } = require("./lib/supabase");
+
+let cachedToken = null;
+let tokenExpiresAt = 0;
 
 function jsonResponse(statusCode, body) {
   return {
@@ -12,6 +18,36 @@ function jsonResponse(statusCode, body) {
     },
     body: JSON.stringify(body),
   };
+}
+
+async function getAuthToken() {
+  // Retorna token em cache se ainda for válido (com 5 min de margem)
+  if (cachedToken && Date.now() < tokenExpiresAt - 300000) {
+    return cachedToken;
+  }
+
+  const authResp = await fetch(`${SYNCPAY_BASE_URL}/api/partner/v1/auth-token`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify({
+      client_id: SYNCPAY_CLIENT_ID,
+      client_secret: SYNCPAY_CLIENT_SECRET,
+    }),
+  });
+
+  if (!authResp.ok) {
+    const errorText = await authResp.text();
+    throw new Error(`Erro ao obter token: ${errorText}`);
+  }
+
+  const authData = await authResp.json();
+  cachedToken = authData.access_token;
+  tokenExpiresAt = Date.now() + (authData.expires_in * 1000);
+  
+  return cachedToken;
 }
 
 function normalizeAmount(rawAmount) {
@@ -44,15 +80,6 @@ exports.handler = async (event) => {
     };
   }
 
-  const token = process.env.TREXPAY_TOKEN;
-  const secret = process.env.TREXPAY_SECRET;
-  if (!token || !secret) {
-    return jsonResponse(500, {
-      success: false,
-      error: "Configure TREXPAY_TOKEN e TREXPAY_SECRET nas variaveis do Netlify",
-    });
-  }
-
   let body = {};
   try {
     body = event.body ? JSON.parse(event.body) : {};
@@ -71,39 +98,73 @@ exports.handler = async (event) => {
   const customerCpf = cpfRaw.padEnd(11, "0").slice(0, 11);
   const tracking = (body.tracking || body.rastreio || body.codigo || `pedido-${randId}`).toString();
 
+  let token;
+  try {
+    token = await getAuthToken();
+  } catch (err) {
+    return jsonResponse(500, { success: false, error: err.message });
+  }
+
+  // Data de expiração do PIX (2 dias a partir de agora)
+  const expiresDate = new Date();
+  expiresDate.setDate(expiresDate.getDate() + 2);
+  const expiresInDays = expiresDate.toISOString().split("T")[0];
+
   const payload = {
-    token,
-    secret,
-    postback: process.env.POSTBACK_URL || body.postback || undefined,
-    amount: Number(amountNum.toFixed(2)),
-    debtor_name: customerName,
-    email: customerEmail,
-    debtor_document_number: customerCpf,
-    phone: customerPhone.startsWith("55") ? `+${customerPhone}` : `+55${customerPhone}`,
-    method_pay: "pix",
-    src: body.src || body.utm_source || "site",
-    sck: body.sck || body.utm_campaign || tracking,
-    utm_source: body.utm_source,
-    utm_campaign: body.utm_campaign,
-    utm_medium: body.utm_medium,
-    utm_content: body.utm_content,
-    utm_term: body.utm_term,
-    split_email: body.split_email,
-    split_percentage: body.split_percentage,
+    ip: "127.0.0.1",
+    pix: {
+      expiresInDays: expiresInDays,
+    },
+    items: [
+      {
+        title: "Vinculacao CPF",
+        quantity: 1,
+        tangible: false,
+        unitPrice: amountCents,
+      },
+    ],
+    amount: amountCents,
+    customer: {
+      cpf: customerCpf,
+      name: customerName,
+      email: customerEmail,
+      phone: customerPhone,
+      externaRef: tracking,
+      address: {
+        city: "Sao Paulo",
+        state: "SP",
+        street: "Rua Exemplo",
+        country: "BR",
+        zipCode: "01000-000",
+        complement: "",
+        neighborhood: "Centro",
+        streetNumber: "123",
+      },
+    },
+    metadata: {
+      provider: "CNHNOVO",
+      sell_url: "https://cnhnovo.com",
+      order_url: "https://cnhnovo.com/pedido",
+      user_email: customerEmail,
+      user_identitication_number: customerCpf,
+    },
+    traceable: true,
+    postbackUrl: process.env.POSTBACK_URL || body.postback || "https://cnhnovo.com/api/webhook",
   };
 
-  const trexResp = await fetch(TREXPAY_DEPOSIT_URL, {
+  const syncResp = await fetch(`${SYNCPAY_BASE_URL}/v1/gateway/api`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Accept: "application/json",
+      Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify(payload),
   });
 
-  const text = await trexResp.text();
-  if (!trexResp.ok) {
-    return jsonResponse(trexResp.status, { success: false, error: text || "Erro ao criar PIX" });
+  const text = await syncResp.text();
+  if (!syncResp.ok) {
+    return jsonResponse(syncResp.status, { success: false, error: text || "Erro ao criar PIX" });
   }
 
   let data = {};
@@ -113,28 +174,11 @@ exports.handler = async (event) => {
     data = {};
   }
 
-  const pixData = data?.pix || data?.data || data;
-  const brcode =
-    pixData?.pixCode ||
-    pixData?.payload ||
-    pixData?.brcode ||
-    pixData?.qr_code_text ||
-    pixData?.emv ||
-    pixData?.qrcode ||
-    null;
-  const qrcodeFinal =
-    pixData?.qr_code_image_url ||
-    pixData?.qrcode_url ||
-    pixData?.qr_code_base64 ||
-    pixData?.qrCodeImage ||
-    pixData?.image ||
-    null;
-  const paymentId =
-    pixData?.idTransaction ||
-    pixData?.transactionId ||
-    pixData?.id ||
-    pixData?.txid ||
-    null;
+  const brcode = data?.paymentCode || null;
+  const qrcodeFinal = data?.paymentCodeBase64 
+    ? `data:image/png;base64,${data.paymentCodeBase64}` 
+    : null;
+  const paymentId = data?.idTransaction || null;
 
   try {
     const supabase = getSupabase();

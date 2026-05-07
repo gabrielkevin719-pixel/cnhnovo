@@ -1,5 +1,11 @@
-const TREXPAY_STATUS_URL = "https://app.trexpayments.com.br/api/status";
+const SYNCPAY_BASE_URL = "https://api.syncpayments.com.br";
+const SYNCPAY_CLIENT_ID = "192cea75-df6e-46df-8a2d-0f03751ce13c";
+const SYNCPAY_CLIENT_SECRET = "6c7f008b-bc68-45b6-b7ed-250f0955ed82";
+
 const { getSupabase } = require("./lib/supabase");
+
+let cachedToken = null;
+let tokenExpiresAt = 0;
 
 function jsonResponse(statusCode, body) {
   return {
@@ -12,6 +18,36 @@ function jsonResponse(statusCode, body) {
     },
     body: JSON.stringify(body),
   };
+}
+
+async function getAuthToken() {
+  // Retorna token em cache se ainda for válido (com 5 min de margem)
+  if (cachedToken && Date.now() < tokenExpiresAt - 300000) {
+    return cachedToken;
+  }
+
+  const authResp = await fetch(`${SYNCPAY_BASE_URL}/api/partner/v1/auth-token`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify({
+      client_id: SYNCPAY_CLIENT_ID,
+      client_secret: SYNCPAY_CLIENT_SECRET,
+    }),
+  });
+
+  if (!authResp.ok) {
+    const errorText = await authResp.text();
+    throw new Error(`Erro ao obter token: ${errorText}`);
+  }
+
+  const authData = await authResp.json();
+  cachedToken = authData.access_token;
+  tokenExpiresAt = Date.now() + (authData.expires_in * 1000);
+  
+  return cachedToken;
 }
 
 exports.handler = async (event) => {
@@ -27,38 +63,32 @@ exports.handler = async (event) => {
     };
   }
 
-  const token = process.env.TREXPAY_TOKEN;
-  const secret = process.env.TREXPAY_SECRET;
-  if (!token || !secret) {
-    return jsonResponse(500, {
-      success: false,
-      error: "Configure TREXPAY_TOKEN e TREXPAY_SECRET nas variaveis do Netlify",
-    });
-  }
-
   let id = event.queryStringParameters?.id;
   if (event.httpMethod === "POST") {
     try {
       const body = event.body ? JSON.parse(event.body) : {};
-      id = body?.id || body?.paymentId || id;
+      id = body?.id || body?.paymentId || body?.transaction_id || id;
     } catch {}
   }
 
   if (!id) {
-    return jsonResponse(400, { success: false, error: "Informe o id" });
+    return jsonResponse(400, { success: false, error: "Informe o id da transação" });
   }
 
-  const statusResp = await fetch(TREXPAY_STATUS_URL, {
-    method: "POST",
+  let token;
+  try {
+    token = await getAuthToken();
+  } catch (err) {
+    return jsonResponse(500, { success: false, error: err.message });
+  }
+
+  const statusResp = await fetch(`${SYNCPAY_BASE_URL}/api/partner/v1/transaction/${id}`, {
+    method: "GET",
     headers: {
       "Content-Type": "application/json",
       Accept: "application/json",
+      Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({
-      token,
-      secret,
-      idTransaction: id,
-    }),
   });
 
   const text = await statusResp.text();
@@ -70,17 +100,18 @@ exports.handler = async (event) => {
   }
 
   if (!statusResp.ok) {
-    return jsonResponse(statusResp.status, { success: false, error: text || "Erro ao consultar pagamento" });
+    return jsonResponse(statusResp.status, { success: false, error: data?.message || text || "Erro ao consultar pagamento" });
   }
 
-  const status = data?.data?.status || data?.status || "PENDING";
-  const paid = ["PAID_OUT", "COMPLETED", "PAID", "APPROVED"].includes(String(status).toUpperCase());
+  // Status possíveis da SyncPay: pending, completed, failed, refunded, med
+  const status = data?.data?.status || "pending";
+  const paid = status === "completed";
 
   try {
     const supabase = getSupabase();
     await supabase
       .from("transactions")
-      .update({ status, paid_at: paid ? new Date().toISOString() : null })
+      .update({ status: status.toUpperCase(), paid_at: paid ? new Date().toISOString() : null })
       .eq("transaction_id", id);
   } catch (_) {}
 
