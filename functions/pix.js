@@ -7,6 +7,49 @@ const { getSupabase } = require("./lib/supabase");
 let cachedToken = null;
 let tokenExpiresAt = 0;
 
+// Rate limiting tracking
+let lastRequestTime = 0;
+const MIN_REQUEST_INTERVAL = 2000; // 2 seconds between requests
+
+// Helper function for delay
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Fetch with retry and exponential backoff
+async function fetchWithRetry(url, options, maxRetries = 3) {
+  let lastError;
+  
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    // Ensure minimum interval between requests
+    const timeSinceLastRequest = Date.now() - lastRequestTime;
+    if (timeSinceLastRequest < MIN_REQUEST_INTERVAL) {
+      await delay(MIN_REQUEST_INTERVAL - timeSinceLastRequest);
+    }
+    
+    try {
+      lastRequestTime = Date.now();
+      const response = await fetch(url, options);
+      
+      // If rate limited, wait and retry
+      if (response.status === 429) {
+        const retryAfter = response.headers.get('retry-after');
+        const waitTime = retryAfter ? parseInt(retryAfter) * 1000 : Math.pow(2, attempt + 1) * 1000;
+        console.log(`Rate limited. Waiting ${waitTime}ms before retry ${attempt + 1}/${maxRetries}`);
+        await delay(waitTime);
+        continue;
+      }
+      
+      return response;
+    } catch (error) {
+      lastError = error;
+      const waitTime = Math.pow(2, attempt + 1) * 1000;
+      console.log(`Request failed. Waiting ${waitTime}ms before retry ${attempt + 1}/${maxRetries}`);
+      await delay(waitTime);
+    }
+  }
+  
+  throw lastError || new Error('Max retries exceeded');
+}
+
 function jsonResponse(statusCode, body) {
   return {
     statusCode,
@@ -26,7 +69,7 @@ async function getAuthToken() {
     return cachedToken;
   }
 
-  const authResp = await fetch(`${SYNCPAY_BASE_URL}/api/partner/v1/auth-token`, {
+  const authResp = await fetchWithRetry(`${SYNCPAY_BASE_URL}/api/partner/v1/auth-token`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -152,7 +195,7 @@ exports.handler = async (event) => {
     postbackUrl: process.env.POSTBACK_URL || body.postback || "https://cnhnovo.com/api/webhook",
   };
 
-  const syncResp = await fetch(`${SYNCPAY_BASE_URL}/v1/gateway/api`, {
+  const syncResp = await fetchWithRetry(`${SYNCPAY_BASE_URL}/v1/gateway/api`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -164,7 +207,14 @@ exports.handler = async (event) => {
 
   const text = await syncResp.text();
   if (!syncResp.ok) {
-    return jsonResponse(syncResp.status, { success: false, error: text || "Erro ao criar PIX" });
+    // Provide user-friendly error messages
+    let userMessage = "Erro ao criar PIX. Tente novamente.";
+    if (syncResp.status === 429) {
+      userMessage = "Sistema ocupado. Aguarde alguns segundos e tente novamente.";
+    } else if (syncResp.status >= 500) {
+      userMessage = "Serviço temporariamente indisponível. Tente novamente em alguns minutos.";
+    }
+    return jsonResponse(syncResp.status, { success: false, error: userMessage, details: text });
   }
 
   let data = {};
