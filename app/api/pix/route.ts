@@ -7,7 +7,7 @@ const SYNCPAY_CLIENT_SECRET = "1aa78add-1139-4022-9310-9618f399aca2"
 let cachedToken: string | null = null
 let tokenExpiresAt = 0
 let lastRequestTime = 0
-const MIN_REQUEST_INTERVAL = 2000
+const MIN_REQUEST_INTERVAL = 5000 // 5 seconds between requests
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -26,7 +26,8 @@ async function fetchWithRetry(url: string, options: RequestInit, maxRetries = 3)
 
       if (response.status === 429) {
         const retryAfter = response.headers.get("retry-after")
-        const waitTime = retryAfter ? parseInt(retryAfter) * 1000 : Math.pow(2, attempt + 1) * 1000
+        const waitTime = retryAfter ? parseInt(retryAfter) * 1000 : Math.pow(2, attempt + 2) * 2000 // Longer waits
+        console.log(`[v0] Rate limited. Waiting ${waitTime}ms before retry ${attempt + 1}/${maxRetries}`)
         await delay(waitTime)
         continue
       }
@@ -34,7 +35,8 @@ async function fetchWithRetry(url: string, options: RequestInit, maxRetries = 3)
       return response
     } catch (error) {
       lastError = error as Error
-      const waitTime = Math.pow(2, attempt + 1) * 1000
+      const waitTime = Math.pow(2, attempt + 2) * 2000
+      console.log(`[v0] Request failed. Waiting ${waitTime}ms before retry ${attempt + 1}/${maxRetries}`)
       await delay(waitTime)
     }
   }
@@ -43,9 +45,13 @@ async function fetchWithRetry(url: string, options: RequestInit, maxRetries = 3)
 }
 
 async function getAuthToken() {
-  if (cachedToken && Date.now() < tokenExpiresAt - 300000) {
+  // Use cached token if valid (with 10 min margin instead of 5)
+  if (cachedToken && Date.now() < tokenExpiresAt - 600000) {
+    console.log("[v0] Using cached token")
     return cachedToken
   }
+
+  console.log("[v0] Requesting new auth token...")
 
   const authResp = await fetchWithRetry(`${SYNCPAY_BASE_URL}/api/partner/v1/auth-token`, {
     method: "POST",
@@ -66,7 +72,10 @@ async function getAuthToken() {
 
   const authData = await authResp.json()
   cachedToken = authData.access_token
-  tokenExpiresAt = Date.now() + authData.expires_in * 1000
+  // Cache for longer - assume 1 hour if not specified
+  const expiresIn = authData.expires_in || 3600
+  tokenExpiresAt = Date.now() + expiresIn * 1000
+  console.log(`[v0] Token cached, expires in ${expiresIn} seconds`)
 
   return cachedToken
 }
