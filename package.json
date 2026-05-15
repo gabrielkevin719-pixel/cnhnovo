@@ -11,6 +11,8 @@
     "@emotion/is-prop-valid": "^1.4.0",
     "@supabase/ssr": "^0.6.1",
     "@supabase/supabase-js": "^2.104.1",
+    "@types/node": "^25.7.0",
+    "@types/react": "^19.2.14",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "next": "^16.2.6",
