@@ -170,6 +170,8 @@ export async function POST(request: NextRequest) {
     postbackUrl: process.env.POSTBACK_URL || (body.postback as string) || "https://cnhnovo.com/api/webhook",
   }
 
+  console.log("[v0] PIX Payload:", JSON.stringify(payload, null, 2))
+
   const syncResp = await fetchWithRetry(`${SYNCPAY_BASE_URL}/v1/gateway/api`, {
     method: "POST",
     headers: {
@@ -181,6 +183,8 @@ export async function POST(request: NextRequest) {
   })
 
   const text = await syncResp.text()
+  console.log("[v0] SyncPayments Response Status:", syncResp.status)
+  console.log("[v0] SyncPayments Response Body:", text)
 
   if (!syncResp.ok) {
     let userMessage = "Erro ao criar PIX. Tente novamente."
