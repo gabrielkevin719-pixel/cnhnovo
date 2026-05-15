@@ -5,7 +5,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "npx nodemon server.js"
+    "dev": "PORT=3001 node server.js"
   },
   "dependencies": {
     "@supabase/ssr": "^0.6.1",
