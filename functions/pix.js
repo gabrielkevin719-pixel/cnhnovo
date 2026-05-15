@@ -143,9 +143,12 @@ exports.handler = async (event) => {
 
   let token;
   try {
+    console.log("[v0] Attempting to get auth token...");
     token = await getAuthToken();
+    console.log("[v0] Auth token obtained successfully");
   } catch (err) {
-    return jsonResponse(500, { success: false, error: err.message });
+    console.log("[v0] Auth token error:", err.message);
+    return jsonResponse(500, { success: false, error: "Erro de autenticação com o serviço de pagamento. Tente novamente." });
   }
 
   // Data de expiração do PIX (2 dias a partir de agora)
@@ -195,6 +198,8 @@ exports.handler = async (event) => {
     postbackUrl: process.env.POSTBACK_URL || body.postback || "https://cnhnovo.com/api/webhook",
   };
 
+  console.log("[v0] Creating PIX with payload:", JSON.stringify({ amount: amountCents, customer: customerName }));
+  
   const syncResp = await fetchWithRetry(`${SYNCPAY_BASE_URL}/v1/gateway/api`, {
     method: "POST",
     headers: {
@@ -206,6 +211,9 @@ exports.handler = async (event) => {
   });
 
   const text = await syncResp.text();
+  console.log("[v0] SyncPayments response status:", syncResp.status);
+  console.log("[v0] SyncPayments response body:", text.substring(0, 500));
+  
   if (!syncResp.ok) {
     // Provide user-friendly error messages
     let userMessage = "Erro ao criar PIX. Tente novamente.";
