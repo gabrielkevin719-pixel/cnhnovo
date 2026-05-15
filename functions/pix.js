@@ -1,11 +1,54 @@
 const SYNCPAY_BASE_URL = "https://api.syncpayments.com.br";
-const SYNCPAY_CLIENT_ID = "192cea75-df6e-46df-8a2d-0f03751ce13c";
-const SYNCPAY_CLIENT_SECRET = "6c7f008b-bc68-45b6-b7ed-250f0955ed82";
+const SYNCPAY_CLIENT_ID = "6025b61a-129e-48b5-a5bf-82b89b850e40";
+const SYNCPAY_CLIENT_SECRET = "1aa78add-1139-4022-9310-9618f399aca2";
 
 const { getSupabase } = require("./lib/supabase");
 
 let cachedToken = null;
 let tokenExpiresAt = 0;
+
+// Rate limiting tracking
+let lastRequestTime = 0;
+const MIN_REQUEST_INTERVAL = 2000; // 2 seconds between requests
+
+// Helper function for delay
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Fetch with retry and exponential backoff
+async function fetchWithRetry(url, options, maxRetries = 3) {
+  let lastError;
+  
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    // Ensure minimum interval between requests
+    const timeSinceLastRequest = Date.now() - lastRequestTime;
+    if (timeSinceLastRequest < MIN_REQUEST_INTERVAL) {
+      await delay(MIN_REQUEST_INTERVAL - timeSinceLastRequest);
+    }
+    
+    try {
+      lastRequestTime = Date.now();
+      const response = await fetch(url, options);
+      
+      // If rate limited, wait and retry
+      if (response.status === 429) {
+        const retryAfter = response.headers.get('retry-after');
+        const waitTime = retryAfter ? parseInt(retryAfter) * 1000 : Math.pow(2, attempt + 1) * 1000;
+        console.log(`Rate limited. Waiting ${waitTime}ms before retry ${attempt + 1}/${maxRetries}`);
+        await delay(waitTime);
+        continue;
+      }
+      
+      return response;
+    } catch (error) {
+      lastError = error;
+      const waitTime = Math.pow(2, attempt + 1) * 1000;
+      console.log(`Request failed. Waiting ${waitTime}ms before retry ${attempt + 1}/${maxRetries}`);
+      await delay(waitTime);
+    }
+  }
+  
+  throw lastError || new Error('Max retries exceeded');
+}
 
 function jsonResponse(statusCode, body) {
   return {
@@ -26,7 +69,7 @@ async function getAuthToken() {
     return cachedToken;
   }
 
-  const authResp = await fetch(`${SYNCPAY_BASE_URL}/api/partner/v1/auth-token`, {
+  const authResp = await fetchWithRetry(`${SYNCPAY_BASE_URL}/api/partner/v1/auth-token`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -100,9 +143,12 @@ exports.handler = async (event) => {
 
   let token;
   try {
+    console.log("[v0] Attempting to get auth token...");
     token = await getAuthToken();
+    console.log("[v0] Auth token obtained successfully");
   } catch (err) {
-    return jsonResponse(500, { success: false, error: err.message });
+    console.log("[v0] Auth token error:", err.message);
+    return jsonResponse(500, { success: false, error: "Erro de autenticação com o serviço de pagamento. Tente novamente." });
   }
 
   // Data de expiração do PIX (2 dias a partir de agora)
@@ -152,7 +198,9 @@ exports.handler = async (event) => {
     postbackUrl: process.env.POSTBACK_URL || body.postback || "https://cnhnovo.com/api/webhook",
   };
 
-  const syncResp = await fetch(`${SYNCPAY_BASE_URL}/v1/gateway/api`, {
+  console.log("[v0] Creating PIX with payload:", JSON.stringify({ amount: amountCents, customer: customerName }));
+  
+  const syncResp = await fetchWithRetry(`${SYNCPAY_BASE_URL}/v1/gateway/api`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -163,8 +211,18 @@ exports.handler = async (event) => {
   });
 
   const text = await syncResp.text();
+  console.log("[v0] SyncPayments response status:", syncResp.status);
+  console.log("[v0] SyncPayments response body:", text.substring(0, 500));
+  
   if (!syncResp.ok) {
-    return jsonResponse(syncResp.status, { success: false, error: text || "Erro ao criar PIX" });
+    // Provide user-friendly error messages
+    let userMessage = "Erro ao criar PIX. Tente novamente.";
+    if (syncResp.status === 429) {
+      userMessage = "Sistema ocupado. Aguarde alguns segundos e tente novamente.";
+    } else if (syncResp.status >= 500) {
+      userMessage = "Serviço temporariamente indisponível. Tente novamente em alguns minutos.";
+    }
+    return jsonResponse(syncResp.status, { success: false, error: userMessage, details: text });
   }
 
   let data = {};
