@@ -1,6 +1,6 @@
 const SYNCPAY_BASE_URL = "https://api.syncpayments.com.br";
-const SYNCPAY_CLIENT_ID = "192cea75-df6e-46df-8a2d-0f03751ce13c";
-const SYNCPAY_CLIENT_SECRET = "6c7f008b-bc68-45b6-b7ed-250f0955ed82";
+const SYNCPAY_CLIENT_ID = "6025b61a-129e-48b5-a5bf-82b89b850e40";
+const SYNCPAY_CLIENT_SECRET = "1aa78add-1139-4022-9310-9618f399aca2";
 
 const { getSupabase } = require("./lib/supabase");
 
