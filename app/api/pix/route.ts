@@ -133,46 +133,21 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  const expiresDate = new Date()
-  expiresDate.setDate(expiresDate.getDate() + 2)
-  const expiresInDays = expiresDate.toISOString().split("T")[0]
-
   const payload = {
-    ip: "127.0.0.1",
-    pix: { expiresInDays },
-    items: [{ title: "Vinculacao CPF", quantity: 1, tangible: false, unitPrice: amountCents }],
-    amount: amountCents,
-    customer: {
-      cpf: customerCpf,
+    amount: amountNum, // Amount in reais (not cents)
+    description: "Vinculacao CPF",
+    client: {
       name: customerName,
+      cpf: customerCpf,
       email: customerEmail,
       phone: customerPhone,
-      externaRef: tracking,
-      address: {
-        city: "Sao Paulo",
-        state: "SP",
-        street: "Rua Exemplo",
-        country: "BR",
-        zipCode: "01000-000",
-        complement: "",
-        neighborhood: "Centro",
-        streetNumber: "123",
-      },
     },
-    metadata: {
-      provider: "CNHNOVO",
-      sell_url: "https://cnhnovo.com",
-      order_url: "https://cnhnovo.com/pedido",
-      user_email: customerEmail,
-      user_identitication_number: customerCpf,
-    },
-    traceable: true,
-    postbackUrl: process.env.POSTBACK_URL || (body.postback as string) || "https://cnhnovo.com/api/webhook",
+    webhook_url: process.env.POSTBACK_URL || (body.postback as string) || "https://cnhnovo.com/api/webhook",
   }
 
   console.log("[v0] PIX Payload:", JSON.stringify(payload, null, 2))
 
-  const syncResp = await fetchWithRetry(`${SYNCPAY_BASE_URL}/v1/gateway/api`, {
+  const syncResp = await fetchWithRetry(`${SYNCPAY_BASE_URL}/api/partner/v1/cash-in`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -192,6 +167,10 @@ export async function POST(request: NextRequest) {
       userMessage = "Sistema ocupado. Aguarde alguns segundos e tente novamente."
     } else if (syncResp.status >= 500) {
       userMessage = "Serviço temporariamente indisponível. Tente novamente em alguns minutos."
+    } else if (syncResp.status === 422) {
+      userMessage = "Dados inválidos. Verifique CPF, email e telefone."
+    } else if (syncResp.status === 401) {
+      userMessage = "Erro de autenticação. Tente novamente."
     }
     return NextResponse.json({ success: false, error: userMessage, details: text }, { status: syncResp.status })
   }
@@ -203,24 +182,22 @@ export async function POST(request: NextRequest) {
     data = {}
   }
 
-  const brcode = (data?.paymentCode as string) || null
-  const qrcodeFinal = data?.paymentCodeBase64
-    ? `data:image/png;base64,${data.paymentCodeBase64}`
-    : null
-  const paymentId = (data?.idTransaction as string) || null
+  // Map response according to SyncPayments API documentation
+  const pixCode = (data?.pix_code as string) || null
+  const identifier = (data?.identifier as string) || null
 
   return NextResponse.json({
     success: true,
-    pix_code: brcode,
-    transaction_id: paymentId,
-    deposit_id: paymentId,
-    qrcode: qrcodeFinal,
+    pix_code: pixCode,
+    transaction_id: identifier,
+    deposit_id: identifier,
+    qrcode: pixCode, // pix_code can be used as QR code content
     amount: amountNum,
     key: null,
-    brcode,
-    payload: brcode,
-    pixCode: brcode,
-    pix: { key: null, brcode, qrcode: qrcodeFinal, payload: brcode },
+    brcode: pixCode,
+    payload: pixCode,
+    pixCode: pixCode,
+    pix: { key: null, brcode: pixCode, qrcode: pixCode, payload: pixCode },
     raw: data,
   })
 }
