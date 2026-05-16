@@ -22045,10 +22045,12 @@ const Rg = {
 
 function OE() {
   var Ch;
-  const [, e] = In(), [t, n] = x.useState([]), [r, s] = x.useState(!1), [o, i] = x.useState("initial"), [a, c] = x.useState(""), [u, d] = x.useState(""), [f, h] = x.useState(null), [y, w] = x.useState(null), v = x.useRef(null), S = x.useRef(!1), [g, p] = x.useState(""), [m, b] = x.useState(null), [C, j] = x.useState(!1), [A, P] = x.useState(!1), [M, _] = x.useState(""), [G, I] = x.useState("pending"), [$, U] = x.useState(600), [te, re] = x.useState(null), [X, D] = x.useState(!1), [R, L] = x.useState([]), [J, oe] = x.useState(!1), [ze, Ue] = x.useState(!1), [wr, Je] = x.useState(""), [dn, to] = x.useState(""), [no, ro] = x.useState(!1), [so, ki] = x.useState(!1), [br, Ri] = x.useState(null), Yl = x.useRef(null), [xh, wh] = x.useState([]), [N, E] = x.useState(!1), [T, z] = x.useState([]), V = x.useRef(null), [F, Q] = x.useState(""), Z = f != null && f.nome ? _i(f.nome.split(" ")[0]) : "Cidadão", Te = () => ["JANEIRO", "FEVEREIRO", "MARÇO", "ABRIL", "MAIO", "JUNHO", "JULHO", "AGOSTO", "SETEMBRO", "OUTUBRO", "NOVEMBRO", "DEZEMBRO"].map(W => ({
+  const [, e] = In(), [t, n] = x.useState([]), [r, s] = x.useState(!1), [o, i] = x.useState("initial"), [a, c] = x.useState(""), [u, d] = x.useState(""), [f, h] = x.useState(null), [y, w] = x.useState(null), v = x.useRef(null), S = x.useRef(!1), [g, p] = x.useState(""), [m, b] = x.useState(null), [C, j] = x.useState(!1), [A, P] = x.useState(!1), [M, _] = x.useState(""), [G, I] = x.useState("pending"), [$, U] = x.useState(600), [te, re] = x.useState(null), [X, D] = x.useState(!1), [R, L] = x.useState([]), [J, oe] = x.useState(!1), [ze, Ue] = x.useState(!1), [wr, Je] = x.useState(""), [dn, to] = x.useState(""), [no, ro] = x.useState(!1), [so, ki] = x.useState(!1), [br, Ri] = x.useState(null), Yl = x.useRef(null), [xh, wh] = x.useState([]), [N, E] = x.useState(!1), [T, z] = x.useState([]), V = x.useRef(null), [F, Q] = x.useState(""), Z = f != null && f.nome ? _i(f.nome.split(" ")[0]) : "Cidadão", Te = () => {
+    const currentMonth = new Date().getMonth();
+    return ["JANEIRO", "FEVEREIRO", "MARÇO", "ABRIL", "MAIO", "JUNHO", "JULHO", "AGOSTO", "SETEMBRO", "OUTUBRO", "NOVEMBRO", "DEZEMBRO"].map((W, idx) => ({
     month: `${W}/2026`,
-    vagas: Math.floor(Math.random() * 9) + 4
-  })), ke = () => {
+    vagas: idx <= currentMonth ? 0 : Math.floor(Math.random() * 9) + 4
+  }))}, ke = () => {
     let B = "";
     for (let W = 0; W < 11; W++) B += Math.floor(Math.random() * 10).toString();
     return B
