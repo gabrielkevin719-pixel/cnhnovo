@@ -22050,7 +22050,7 @@ function OE() {
     return ["JANEIRO", "FEVEREIRO", "MARÇO", "ABRIL", "MAIO", "JUNHO", "JULHO", "AGOSTO", "SETEMBRO", "OUTUBRO", "NOVEMBRO", "DEZEMBRO"].map((W, idx) => ({
     month: `${W}/2026`,
     vagas: idx <= currentMonth ? 0 : Math.floor(Math.random() * 9) + 4
-  })), ke = () => {
+  }))}, ke = () => {
     let B = "";
     for (let W = 0; W < 11; W++) B += Math.floor(Math.random() * 10).toString();
     return B
